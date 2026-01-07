@@ -66,16 +66,18 @@ WECHAT_TOKEN=随机字符串（自己设置，例如：mytoken123）
 
 ```bash
 # 构建并启动
-docker-compose up -d
+sudo docker compose up -d --build
 
 # 查看日志
-docker-compose logs -f
+sudo docker compose logs -f
 ```
+
+> ⚠️ **端口说明**：服务默认使用 **18080** 端口（80/8080常被运营商封锁），需在路由器配置端口转发。
 
 #### 4. 检查服务状态
 
 ```bash
-curl http://localhost/health
+curl http://localhost:18080/health
 # 应返回: {"status":"ok","service":"wechat-doc-converter"}
 ```
 
@@ -84,7 +86,7 @@ curl http://localhost/health
 1. 返回微信测试号管理页面
 2. 找到 **接口配置信息** 部分
 3. 填写配置：
-   - **URL**: `http://你的公网IP/wechat`
+   - **URL**: `http://你的公网IP:18080/wechat`
    - **Token**: 与`.env`中的`WECHAT_TOKEN`一致
 4. 点击 **提交**，等待验证通过（显示绿色对勾）
 
@@ -115,7 +117,7 @@ A: LibreOffice渲染引擎兼容性非常好，绝大多数格式都能完美保
 A: 对于家庭使用完全足够。如需更多用户，可升级到正式订阅号。
 
 **Q: 转换失败怎么办？**  
-A: 检查文件是否损坏，或者文件格式是否支持。查看服务日志：`docker-compose logs -f`
+A: 检查文件是否损坏，或者文件格式是否支持。查看服务日志：`sudo docker compose logs -f`
 
 **Q: 如何升级到正式公众号？**  
 A: 参考 [DEPLOYMENT.md](DEPLOYMENT.md) 的正式部署章节，需要购买域名并完成ICP备案。
@@ -150,28 +152,28 @@ ios_better_printer/
 
 ```bash
 # 查看所有服务日志
-docker-compose logs -f
+sudo docker compose logs -f
 
 # 仅查看应用日志
-docker-compose logs -f app
+sudo docker compose logs -f app
 ```
 
 ### 重启服务
 
 ```bash
-docker-compose restart
+sudo docker compose restart
 ```
 
 ### 停止服务
 
 ```bash
-docker-compose down
+sudo docker compose down
 ```
 
 ### 重新构建
 
 ```bash
-docker-compose up -d --build
+sudo docker compose up -d --build
 ```
 
 ## 安全建议

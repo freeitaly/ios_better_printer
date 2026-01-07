@@ -1,16 +1,14 @@
 FROM python:3.11-slim
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    libreoffice \
-    libreoffice-writer \
-    libreoffice-calc \
-    libreoffice-impress \
-    fonts-noto-cjk \
-    fonts-wqy-microhei \
+# 安装精简版LibreOffice（约500MB vs 完整版2GB+）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-writer-nogui \
+    libreoffice-calc-nogui \
+    libreoffice-impress-nogui \
     fonts-wqy-zenhei \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && rm -rf /usr/share/libreoffice/help
 
 # 设置LibreOffice环境变量
 ENV HOME=/app

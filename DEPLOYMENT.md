@@ -89,13 +89,15 @@ python windows_converter_service.py
 ### 2.1 环境准备 (Ubuntu 22.04)
 
 ```bash
-# 安装Docker
-curl -fsSL https://get.docker.com | sudo sh
+# 安装Docker (国内使用阿里云镜像)
+curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo systemctl enable docker
-
-# 安装Docker Compose
-sudo apt install docker-compose -y
 ```
+
+> 💡 **提示**：如果拉取镜像很慢，可以配置Docker镜像加速器，参考阿里云容器镜像服务。
 
 ### 2.2 部署代码
 
@@ -135,8 +137,10 @@ WINDOWS_CONVERTER_TIMEOUT=60
 ### 2.4 启动服务
 
 ```bash
-sudo docker-compose up -d --build
+sudo docker compose up -d --build
 ```
+
+> ⚠️ **注意**：服务默认使用 **18080** 端口（80端口常被运营商封锁），需要在路由器配置18080端口转发。
 
 ---
 
@@ -144,12 +148,11 @@ sudo docker-compose up -d --build
 
 ### 3.1 检查连接
 
-在Linux VM内测试能否通过内网访问Windows服务：
+在Linux VM上测试能否访问Windows服务：
 
 ```bash
-sudo docker exec -it wechat-doc-converter bash
-curl http://192.168.1.101:8080/health
-# 应返回 {"status": "ok", ...}
+curl http://<Windows-VM-IP>:8080/health
+# 应返回 {"status": "ok", "available_apps": {...}}
 ```
 
 ### 3.2 微信端测试
@@ -158,7 +161,7 @@ curl http://192.168.1.101:8080/health
 2. 发送一个Word文档。
 3. 观察Linux容器日志：
    ```bash
-   sudo docker-compose logs -f app
+   sudo docker compose logs -f app
    ```
 4. 成功标志：
    - 日志显示 `尝试使用Windows转换服务...`
@@ -174,10 +177,11 @@ curl http://192.168.1.101:8080/health
 | **转换显示"使用LibreOffice转换"** | Linux无法连接Windows服务 | 检查Windows防火墙8080端口；检查.env中的IP配置 |
 | **Windows服务报错 0x80080005** | Office未激活或卡死 | 登录Windows VM打开Word确认无弹窗；重启Windows服务 |
 | **一直显示"处理中"无结果** | 转换超时 | 在.env中增加 `WINDOWS_CONVERTER_TIMEOUT` 到 120 |
-| **手机未收到任何回复** | 微信回调配置错误 | 检查微信后台URL配置；检查Linux防火墙80端口 |
+| **手机未收到任何回复** | 微信回调配置错误 | 检查微信后台URL配置；检查路由器18080端口转发 |
+| **外网无法访问(80/8080端口)** | 运营商封锁常用端口 | 改用18080等非常用端口 |
 
 ## 维护
 
-- **日志查看**: `sudo docker-compose logs -f --tail=100`
+- **日志查看**: `sudo docker compose logs -f --tail=100`
 - **临时文件清理**: 系统已配置自动清理，无需手动干预。
-- **更新**: `git pull && sudo docker-compose up -d --build`
+- **更新**: `git pull && sudo docker compose up -d --build`

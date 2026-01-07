@@ -10,6 +10,9 @@ services:
       - WECHAT_APP_ID=${WECHAT_APP_ID}
       - WECHAT_APP_SECRET=${WECHAT_APP_SECRET}
       - WECHAT_TOKEN=${WECHAT_TOKEN}
+      - WINDOWS_CONVERTER_ENABLED=${WINDOWS_CONVERTER_ENABLED}
+      - WINDOWS_CONVERTER_URL=${WINDOWS_CONVERTER_URL}
+      - WINDOWS_CONVERTER_TIMEOUT=${WINDOWS_CONVERTER_TIMEOUT}
       - DEBUG=False
     volumes:
       - ./temp_files:/app/temp_files
@@ -21,7 +24,7 @@ services:
     image: nginx:alpine
     container_name: nginx-proxy
     ports:
-      - "80:80"
+      - "18080:80"
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
