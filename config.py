@@ -4,10 +4,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    # 微信公众号配置
+    # 微信公众号配置（已弃用，保留兼容性）
     WECHAT_APP_ID = os.getenv('WECHAT_APP_ID', '')
     WECHAT_APP_SECRET = os.getenv('WECHAT_APP_SECRET', '')
     WECHAT_TOKEN = os.getenv('WECHAT_TOKEN', 'your_token_here')
+    
+    # 企业微信配置
+    WECOM_CORP_ID = os.getenv('WECOM_CORP_ID', '')
+    WECOM_AGENT_ID = os.getenv('WECOM_AGENT_ID', '')
+    WECOM_SECRET = os.getenv('WECOM_SECRET', '')
+    WECOM_TOKEN = os.getenv('WECOM_TOKEN', '')
+    WECOM_ENCODING_AES_KEY = os.getenv('WECOM_ENCODING_AES_KEY', '')
     
     # 文件存储配置
     TEMP_DIR = os.getenv('TEMP_DIR', '/app/temp_files')

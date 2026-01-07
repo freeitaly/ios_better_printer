@@ -3,13 +3,15 @@ version: '3.8'
 services:
   app:
     build: .
-    container_name: wechat-doc-converter
+    container_name: wecom-doc-converter
     ports:
       - "5000:5000"
     environment:
-      - WECHAT_APP_ID=${WECHAT_APP_ID}
-      - WECHAT_APP_SECRET=${WECHAT_APP_SECRET}
-      - WECHAT_TOKEN=${WECHAT_TOKEN}
+      - WECOM_CORP_ID=${WECOM_CORP_ID}
+      - WECOM_AGENT_ID=${WECOM_AGENT_ID}
+      - WECOM_SECRET=${WECOM_SECRET}
+      - WECOM_TOKEN=${WECOM_TOKEN}
+      - WECOM_ENCODING_AES_KEY=${WECOM_ENCODING_AES_KEY}
       - WINDOWS_CONVERTER_ENABLED=${WINDOWS_CONVERTER_ENABLED}
       - WINDOWS_CONVERTER_URL=${WINDOWS_CONVERTER_URL}
       - WINDOWS_CONVERTER_TIMEOUT=${WINDOWS_CONVERTER_TIMEOUT}
