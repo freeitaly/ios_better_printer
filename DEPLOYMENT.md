@@ -1,19 +1,17 @@
-# 微信文档转换服务部署指南 (双引擎版)
+# 企业微信文档转换服务部署指南 (双引擎版)
 
-本文档提供完整的生产环境部署步骤。本系统采用**双引擎架构**，结合了Linux容器的高效性和Windows Office的高保真转换能力。
+本文档提供完整的生产环境部署步骤。
 
 ---
 
 ## 🏗️ 系统架构
-
-为了实现100%的排版还原度（特别是页数一致性），系统由两部分组成：
 
 ```
 ┌───────────────────────────┐           ┌──────────────────────────┐
 │        Linux VM           │           │        Windows VM        │
 │    (前端接入 + 备份引擎)    │           │      (主转换引擎)         │
 │                           │           │                          │
-│  [微信] -> [Flask App] ───┼── HTTP ──>│ [Python服务] -> [Office]  │
+│  [企业微信] -> [Flask] ───┼── HTTP ──>│ [Python服务] -> [Office]  │
 │              │            │           │                          │
 │              ▼            │           └──────────────────────────┘
 │        [LibreOffice]      │
@@ -21,70 +19,41 @@
 └───────────────────────────┘
 ```
 
-- **Linux VM**: 运行Docker容器，处理微信消息，负责与用户交互。
-- **Windows VM**: 运行Office COM服务，提供原汁原味的文档转换。
+---
 
-> **注意**：如果不部署Windows VM，系统将自动降级使用Linux内置的LibreOffice进行转换（可能会有排版/页数差异）。
+## 🛠️ 部署流程
+
+1. 部署Windows VM (可选，用于高保真转换)
+2. 部署Linux VM
+3. 注册企业微信并配置应用
 
 ---
 
-## 🛠️ 部署流程概览
-
-1. **部署Windows VM** (作为上游服务)
-2. **部署Linux VM** (作为下游应用)
-3. **联调测试**
-
----
-
-## 第一部分：Windows VM 部署 (主转换引擎)
-
-此步骤在ESXi上创建一个Windows虚拟机，用于运行Microsoft Office。
+## 第一部分：Windows VM 部署 (可选)
 
 ### 1.1 创建虚拟机
-- **OS**: Windows 10/11 (推荐) 或 Server 2022
-- **配置**: 2核 CPU, 4GB 内存, 60GB 硬盘
-- **网络**: 需固定IP (例如: `192.168.1.101`)
+- **OS**: Windows 10/11 或 Server 2022
+- **配置**: 2核 CPU, 4GB 内存
 
 ### 1.2 安装必要软件
-1. **Microsoft Office**: 安装Word, Excel, PowerPoint组件。
-2. **Python 3.11+**: [下载安装](https://www.python.org/downloads/windows/) (务必勾选 "Add to PATH")。
-3. **Git**: [下载安装](https://git-scm.com/download/win)。
+1. Microsoft Office 或 WPS Office
+2. Python 3.11+
+3. Git
 
 ### 1.3 部署转换服务
 
-打开PowerShell执行：
-
 ```powershell
-# 1. 下载代码
 cd C:\
-git clone https://github.com/your-repo/ios_better_printer.git converter
+git clone https://github.com/freeitaly/ios_better_printer.git converter
 cd converter
-
-# 2. 安装依赖
 pip install flask pywin32==306
-# 如果报错，执行: python C:\Python311\Scripts\pywin32_postinstall.py -install
-
-# 3. 开放防火墙端口 8080
 New-NetFirewallRule -DisplayName "OfficeConverter" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
-
-# 4. 启动服务测试
 python windows_converter_service.py
 ```
 
-### 1.4 配置开机自启 (推荐使用NSSM)
-1. 下载 [NSSM](https://nssm.cc/release/nssm-2.24.zip) 并解压到 `C:\nssm`.
-2. 管理员运行CMD:
-   ```cmd
-   C:\nssm\win64\nssm.exe install OfficeConverter "C:\Python311\python.exe" "C:\converter\windows_converter_service.py"
-   C:\nssm\win64\nssm.exe set OfficeConverter AppDirectory "C:\converter"
-   C:\nssm\win64\nssm.exe start OfficeConverter
-   ```
-
 ---
 
-## 第二部分：Linux VM 部署 (应用主程序)
-
-此步骤部署处理微信消息的主程序。
+## 第二部分：Linux VM 部署
 
 ### 2.1 环境准备 (Ubuntu 22.04)
 
@@ -97,42 +66,35 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo systemctl enable docker
 ```
 
-> 💡 **提示**：如果拉取镜像很慢，可以配置Docker镜像加速器，参考阿里云容器镜像服务。
-
 ### 2.2 部署代码
 
 ```bash
-# 1. 创建目录
-sudo mkdir -p /opt/wechat-converter
-cd /opt/wechat-converter
-
-# 2. 上传项目代码 (除windows_*.py外的所有文件)
-# ...使用git clone或scp...
+sudo mkdir -p /opt/wecom-converter
+cd /opt/wecom-converter
+git clone https://github.com/freeitaly/ios_better_printer.git .
 ```
 
 ### 2.3 配置文件
-
-复制并编辑配置文件：
 
 ```bash
 cp .env.example .env
 vim .env
 ```
 
-**关键配置项**：
+**关键配置**：
 
 ```ini
-# 微信配置
-WECHAT_APP_ID=你的AppID
-WECHAT_APP_SECRET=你的AppSecret
-WECHAT_TOKEN=你的Token
+# 企业微信配置
+WECOM_CORP_ID=你的企业ID
+WECOM_AGENT_ID=你的应用AgentId
+WECOM_SECRET=你的应用Secret
+WECOM_TOKEN=自定义Token
+WECOM_ENCODING_AES_KEY=43位随机字符串
 
-# 🔌 连接到Windows VM (关键步骤)
+# Windows转换服务
 WINDOWS_CONVERTER_ENABLED=true
-WINDOWS_CONVERTER_URL=http://192.168.1.101:8080
-WINDOWS_CONVERTER_TIMEOUT=60
+WINDOWS_CONVERTER_URL=http://<Windows-VM-IP>:8080
 ```
-> 将 `192.168.1.101` 替换为你实际的Windows VM IP。
 
 ### 2.4 启动服务
 
@@ -140,48 +102,48 @@ WINDOWS_CONVERTER_TIMEOUT=60
 sudo docker compose up -d --build
 ```
 
-> ⚠️ **注意**：服务默认使用 **18080** 端口（80端口常被运营商封锁），需要在路由器配置18080端口转发。
+> ⚠️ 服务使用 **18080** 端口，需在路由器配置端口转发。
 
 ---
 
-## 第三部分：联调与验证
+## 第三部分：配置企业微信
 
-### 3.1 检查连接
+### 3.1 注册企业微信
+1. 访问 https://work.weixin.qq.com/
+2. 个人可选择"其他组织"类型注册
 
-在Linux VM上测试能否访问Windows服务：
+### 3.2 创建自建应用
+1. 管理后台 → 应用管理 → 创建应用
+2. 记录 **AgentId** 和 **Secret**
+3. 在"我的企业"页面记录 **企业ID**
 
-```bash
-curl http://<Windows-VM-IP>:8080/health
-# 应返回 {"status": "ok", "available_apps": {...}}
-```
+### 3.3 配置接收消息
+1. 应用设置 → 接收消息 → 设置API接收
+2. 填写：
+   - **URL**: `http://<公网IP>:18080/wecom`
+   - **Token**: 与.env中WECOM_TOKEN一致
+   - **EncodingAESKey**: 与.env中WECOM_ENCODING_AES_KEY一致
+3. 点击保存
 
-### 3.2 微信端测试
-
-1. 关注测试号/订阅号。
-2. 发送一个Word文档。
-3. 观察Linux容器日志：
-   ```bash
-   sudo docker compose logs -f app
-   ```
-4. 成功标志：
-   - 日志显示 `尝试使用Windows转换服务...`
-   - 日志显示 `✅ Windows转换成功`
-   - 手机收到PDF，且**页数与Windows上一致**。
+### 3.4 测试
+在企业微信中打开应用，发送一个Word文件，等待返回PDF。
 
 ---
 
 ## 故障排查
 
-| 现象 | 可能原因 | 解决方案 |
-|------|----------|----------|
-| **转换显示"使用LibreOffice转换"** | Linux无法连接Windows服务 | 检查Windows防火墙8080端口；检查.env中的IP配置 |
-| **Windows服务报错 0x80080005** | Office未激活或卡死 | 登录Windows VM打开Word确认无弹窗；重启Windows服务 |
-| **一直显示"处理中"无结果** | 转换超时 | 在.env中增加 `WINDOWS_CONVERTER_TIMEOUT` 到 120 |
-| **手机未收到任何回复** | 微信回调配置错误 | 检查微信后台URL配置；检查路由器18080端口转发 |
-| **外网无法访问(80/8080端口)** | 运营商封锁常用端口 | 改用18080等非常用端口 |
+| 现象 | 解决方案 |
+|------|----------|
+| 回调URL验证失败 | 检查Token和EncodingAESKey是否一致 |
+| 转换使用LibreOffice | 检查WINDOWS_CONVERTER_URL配置 |
+| 外网无法访问 | 检查路由器18080端口转发 |
 
 ## 维护
 
-- **日志查看**: `sudo docker compose logs -f --tail=100`
-- **临时文件清理**: 系统已配置自动清理，无需手动干预。
-- **更新**: `git pull && sudo docker compose up -d --build`
+```bash
+# 查看日志
+sudo docker compose logs -f app
+
+# 更新代码
+git pull && sudo docker compose up -d --build
+```
