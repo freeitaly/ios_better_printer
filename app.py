@@ -118,8 +118,14 @@ def wecom_handler():
     
     # POST请求：处理消息
     try:
+        # 首先记录原始请求信息
+        logger.info(f"=== 收到POST请求 ===")
+        logger.info(f"请求URL: {request.url}")
+        logger.info(f"Content-Length: {request.content_length}")
+        
         xml_data = request.data.decode('utf-8')
-        logger.info(f"收到加密消息: {xml_data[:200]}...")
+        logger.info(f"原始数据长度: {len(xml_data)} 字节")
+        logger.info(f"原始数据: {xml_data[:500]}...")
         
         # 解析外层XML获取加密内容
         root = ET.fromstring(xml_data)
