@@ -100,6 +100,19 @@ def process_document_async(from_user: str, media_id: str, file_name: str):
 def wecom_handler():
     """企业微信消息处理器"""
     
+    # ========== 第一步：记录原始请求（在任何处理之前）==========
+    logger.info("=" * 60)
+    logger.info(f"[DEBUG] 收到请求: Method={request.method}, URL={request.url}")
+    logger.info(f"[DEBUG] Remote IP: {request.remote_addr}")
+    logger.info(f"[DEBUG] Content-Type: {request.content_type}")
+    logger.info(f"[DEBUG] Content-Length: {request.content_length}")
+    
+    # 对于POST请求，立即记录原始body（用于判断是否收到了请求）
+    if request.method == 'POST':
+        raw_body = request.data
+        logger.info(f"[DEBUG] 原始Body长度: {len(raw_body)} 字节")
+        logger.info(f"[DEBUG] 原始Body内容: {raw_body[:1000]}")  # 记录前1000字节
+    
     msg_signature = request.args.get('msg_signature', '')
     timestamp = request.args.get('timestamp', '')
     nonce = request.args.get('nonce', '')
@@ -110,63 +123,78 @@ def wecom_handler():
         
         try:
             reply_echostr = wecom_api.crypto.verify_url(msg_signature, timestamp, nonce, echostr)
-            logger.info("企业微信回调URL验证成功")
+            logger.info("[SUCCESS] 企业微信回调URL验证成功")
             return reply_echostr
         except Exception as e:
-            logger.error(f"企业微信回调URL验证失败: {str(e)}")
+            logger.error(f"[ERROR] 企业微信回调URL验证失败: {str(e)}")
             return 'Verification failed', 403
     
     # POST请求：处理消息
     try:
-        # 首先记录原始请求信息
-        logger.info(f"=== 收到POST请求 ===")
-        logger.info(f"请求URL: {request.url}")
-        logger.info(f"Content-Length: {request.content_length}")
-        
         xml_data = request.data.decode('utf-8')
-        logger.info(f"原始数据长度: {len(xml_data)} 字节")
-        logger.info(f"原始数据: {xml_data[:500]}...")
         
         # 解析外层XML获取加密内容
         root = ET.fromstring(xml_data)
         encrypt_elem = root.find('Encrypt')
         if encrypt_elem is None:
-            logger.error("消息中没有Encrypt字段")
+            logger.error("[ERROR] 消息中没有Encrypt字段")
             return 'success'
         
         encrypt_msg = encrypt_elem.text
         
         # 解密消息
         decrypted_xml = wecom_api.crypto.decrypt_message(msg_signature, timestamp, nonce, encrypt_msg)
-        logger.info(f"解密后消息: {decrypted_xml[:200]}...")
+        
+        # ========== 关键：记录解密后的完整XML ==========
+        logger.info(f"[DEBUG] 解密后完整XML:\n{decrypted_xml}")
         
         # 解析解密后的XML
         msg_root = ET.fromstring(decrypted_xml)
         
-        msg_type = msg_root.find('MsgType').text
+        # 获取消息类型
+        msg_type_elem = msg_root.find('MsgType')
+        msg_type = msg_type_elem.text if msg_type_elem is not None else 'unknown'
+        
+        logger.info(f"[DEBUG] >>>>>> 消息类型: {msg_type} <<<<<<")
+        
         from_user = msg_root.find('FromUserName').text  # 用户的userid
         to_user = msg_root.find('ToUserName').text      # 企业的corpid
         msg_id = msg_root.find('MsgId')
         msg_id = msg_id.text if msg_id is not None else str(time.time())
+        
+        logger.info(f"[DEBUG] FromUser={from_user}, ToUser={to_user}, MsgId={msg_id}")
         
         # 清理过期缓存
         cleanup_message_cache()
         
         # 检查是否重复消息
         if msg_id in processed_messages:
-            logger.info(f"跳过重复消息: {msg_id}")
+            logger.info(f"[SKIP] 跳过重复消息: {msg_id}")
             return 'success'
         
         # 标记消息已处理
         processed_messages[msg_id] = time.time()
         
-        # 处理文件消息
+        # ========== 处理文件消息 ==========
         if msg_type == 'file':
-            media_id = msg_root.find('MediaId').text
-            file_name_elem = msg_root.find('FileName')
-            file_name = file_name_elem.text if file_name_elem is not None else 'document.docx'
+            logger.info("[FILE] 检测到文件类型消息，开始处理...")
             
-            logger.info(f"收到文件: {file_name}, MediaId: {media_id}")
+            media_id = msg_root.find('MediaId').text
+            
+            # 企业微信file消息可能用不同的字段名：FileName 或 Title
+            file_name = None
+            for field_name in ['FileName', 'Title', 'Name']:
+                elem = msg_root.find(field_name)
+                if elem is not None and elem.text:
+                    file_name = elem.text
+                    logger.info(f"[FILE] 从字段 {field_name} 获取文件名: {file_name}")
+                    break
+            
+            if not file_name:
+                file_name = 'document.docx'
+                logger.info(f"[FILE] 未找到文件名字段，使用默认: {file_name}")
+            
+            logger.info(f"[FILE] 收到文件: {file_name}, MediaId: {media_id}")
             
             # 启动异步处理线程
             thread = threading.Thread(
@@ -180,11 +208,13 @@ def wecom_handler():
             reply_msg = create_text_response(from_user, to_user, "📄 正在转换您的文档，请稍候...\n预计需要5-15秒")
             # 加密回复
             encrypted_reply = wecom_api.crypto.encrypt_message(reply_msg, nonce, timestamp)
+            logger.info("[FILE] 已返回处理中提示，异步线程已启动")
             return encrypted_reply
         
-        # 处理文本消息
+        # ========== 处理文本消息 ==========
         elif msg_type == 'text':
             content = msg_root.find('Content').text or ''
+            logger.info(f"[TEXT] 收到文本消息: {content}")
             
             if content.strip() in ['帮助', 'help', '?', '？', 'h']:
                 help_text = """📄 作业排版助手使用说明
@@ -206,8 +236,19 @@ def wecom_handler():
             encrypted_reply = wecom_api.crypto.encrypt_message(reply_msg, nonce, timestamp)
             return encrypted_reply
         
-        # 其他消息类型
+        # ========== 处理图片消息（添加日志） ==========
+        elif msg_type == 'image':
+            logger.info(f"[IMAGE] 收到图片消息，MediaId: {msg_root.find('MediaId').text if msg_root.find('MediaId') is not None else 'N/A'}")
+            reply_msg = create_text_response(
+                from_user, to_user, 
+                "请发送Word或Excel文件，我会帮您转换为PDF 📄\n\n（暂不支持图片转换）"
+            )
+            encrypted_reply = wecom_api.crypto.encrypt_message(reply_msg, nonce, timestamp)
+            return encrypted_reply
+        
+        # ========== 其他消息类型 ==========
         else:
+            logger.info(f"[OTHER] 收到其他类型消息: {msg_type}")
             reply_msg = create_text_response(
                 from_user, to_user, 
                 "请发送Word或Excel文件，我会帮您转换为PDF 📄"
@@ -216,7 +257,7 @@ def wecom_handler():
             return encrypted_reply
             
     except Exception as e:
-        logger.error(f"处理消息异常: {str(e)}", exc_info=True)
+        logger.error(f"[ERROR] 处理消息异常: {str(e)}", exc_info=True)
         return 'success'
 
 
@@ -233,6 +274,17 @@ def index():
         'message': 'Enterprise WeChat Document Converter Service',
         'health': '/health',
         'wecom': '/wecom'
+    }
+
+
+@app.route('/debug/recent', methods=['GET'])
+def debug_recent():
+    """调试接口：查看最近处理的消息"""
+    return {
+        'processed_messages_count': len(processed_messages),
+        'recent_messages': list(processed_messages.keys())[-10:],  # 最近10条
+        'cache_ttl': MESSAGE_CACHE_TTL,
+        'service_status': 'running'
     }
 
 
