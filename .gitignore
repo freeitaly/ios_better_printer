@@ -46,3 +46,6 @@ temp_files/
 # SSL证书
 ssl/*.pem
 ssl/*.key
+
+# 私有链接（不提交）
+PRIVATE_LINKS.md

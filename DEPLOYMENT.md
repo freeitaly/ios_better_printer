@@ -1,31 +1,58 @@
-# 企业微信文档转换服务部署指南
+# 文档转换服务部署指南
 
-> ⚠️ **注意**: 本项目目前处于暂停状态。请先阅读 [README.md](README.md) 了解当前技术限制。
+本指南介绍如何部署 iOS 作业排版助手的服务端。
 
 ---
 
 ## 系统架构
 
 ```
-┌───────────────────────────┐           ┌──────────────────────────┐
-│        Linux VM           │           │        Windows VM        │
-│    (前端接入 + 备份引擎)    │           │      (主转换引擎)         │
-│                           │           │                          │
-│  [企业微信] -> [Flask] ───┼── HTTP ──>│ [Python服务] -> [Office]  │
-│              │            │           │                          │
-│              ▼            │           └──────────────────────────┘
-│        [LibreOffice]      │
-│         (降级备份)         │
-└───────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  iPhone                                                         │
+│  [快捷指令] ────────── HTTP POST ──────────────────────────────>│
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Linux Server (Docker)                                          │
+│                                                                 │
+│  [Nginx :18080] ──> [Flask /api/convert] ──> [Windows转换服务]   │
+│                              │                                  │
+│                              ▼                                  │
+│                     [LibreOffice 备用]                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Windows VM                                                     │
+│  [Python服务 :8080] ──> [Microsoft Office / WPS COM]            │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+### 端口说明
+
+| 端口 | 用途 |
+|-----|------|
+| **18080** | 对外服务端口（Nginx） |
+| 5000 | Flask 内部端口（容器内） |
+| 8080 | Windows 转换服务端口 |
+
+> ⚠️ **为什么使用 18080？**
+> 
+> 电信专线独立 IP 通常会封禁 80 和 8080 端口。部署时发现这些端口无法访问，因此改用 18080 端口。
+> 
+> 如需使用其他端口，修改 `docker-compose.yml` 中的端口映射：
+> ```yaml
+> ports:
+>   - "你的端口:80"
+> ```
 
 ---
 
-## 第一部分：Windows VM 部署
+## 第一部分：Windows VM 部署（推荐）
 
 ### 1.1 环境要求
 - Windows 10/11 或 Server 2022
-- 2核 CPU, 4GB 内存
 - Microsoft Office 或 WPS Office
 - Python 3.11+
 
@@ -37,14 +64,14 @@ git clone https://github.com/freeitaly/ios_better_printer.git converter
 cd converter
 pip install flask pywin32==306
 
-# 开放防火墙端口
+# 开放防火墙
 New-NetFirewallRule -DisplayName "OfficeConverter" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
 
 # 启动服务
 python windows_converter_service.py
 ```
 
-### 1.3 验证服务
+### 1.3 验证
 
 ```bash
 curl http://localhost:8080/health
@@ -54,44 +81,41 @@ curl http://localhost:8080/health
 
 ## 第二部分：Linux VM 部署
 
-### 2.1 安装Docker
+### 2.1 安装 Docker
 
 ```bash
-# 国内使用阿里云镜像
+# 国内镜像
 curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 ```
 
-### 2.2 部署代码
+### 2.2 部署
 
 ```bash
-sudo mkdir -p /opt/wecom-converter
-cd /opt/wecom-converter
+sudo mkdir -p /opt/ios_better_printer
+cd /opt/ios_better_printer
 git clone https://github.com/freeitaly/ios_better_printer.git .
-```
-
-### 2.3 配置环境变量
-
-```bash
 cp .env.example .env
 vim .env
 ```
 
-配置示例：
-```ini
-WECOM_CORP_ID=你的企业ID
-WECOM_AGENT_ID=你的应用AgentId
-WECOM_SECRET=你的应用Secret
-WECOM_TOKEN=自定义Token
-WECOM_ENCODING_AES_KEY=43位随机字符串
+### 2.3 配置 .env
 
+```ini
+# Windows 转换服务
 WINDOWS_CONVERTER_ENABLED=true
 WINDOWS_CONVERTER_URL=http://<Windows-VM-IP>:8080
+
+# 企业微信（可选，如果不使用可留空）
+WECOM_CORP_ID=
+WECOM_AGENT_ID=
+WECOM_SECRET=
+WECOM_TOKEN=
+WECOM_ENCODING_AES_KEY=
 ```
 
-### 2.4 启动服务
+### 2.4 启动
 
 ```bash
 sudo docker compose up -d --build
@@ -99,27 +123,21 @@ sudo docker compose up -d --build
 
 ---
 
-## 第三部分：配置企业微信
+## 第三部分：验证部署
 
-### 3.1 创建自建应用
-1. 访问 https://work.weixin.qq.com/
-2. 管理后台 → 应用管理 → 创建应用
-3. 记录 AgentId、Secret、企业ID
+### 测试转换 API
 
-### 3.2 配置API接收
-1. 应用设置 → 接收消息 → 设置API接收
-2. 填写：
-   - **URL**: `http://<公网IP>:18080/wecom`
-   - **Token**: 与.env一致
-   - **EncodingAESKey**: 与.env一致
+```bash
+# 上传 Word 文件测试
+curl -X POST -F "file=@test.docx" http://localhost:18080/api/convert -o output.pdf
+file output.pdf  # 应显示: PDF document
+```
 
----
+### 检查日志
 
-## 已知问题
-
-⚠️ **当前企业微信自建应用无法接收file类型消息回调**，导致核心功能无法使用。
-
-详见 [README.md](README.md#项目状态说明)
+```bash
+sudo docker compose logs -f app
+```
 
 ---
 
@@ -132,6 +150,14 @@ sudo docker compose logs -f app
 # 更新代码
 git pull && sudo docker compose up -d --build
 
-# 重启服务
+# 重启
 sudo docker compose restart
 ```
+
+---
+
+## 客户端配置
+
+服务端部署完成后，在 iPhone 上创建快捷指令：
+
+详见 [IOS_SHORTCUT_GUIDE.md](IOS_SHORTCUT_GUIDE.md)
