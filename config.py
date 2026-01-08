@@ -18,7 +18,7 @@ class Config:
     
     # 文件存储配置
     TEMP_DIR = os.getenv('TEMP_DIR', '/app/temp_files')
-    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
     
     # LibreOffice配置（备用转换引擎）
     LIBREOFFICE_PATH = os.getenv('LIBREOFFICE_PATH', '/usr/bin/soffice')

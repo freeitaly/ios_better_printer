@@ -288,6 +288,96 @@ def debug_recent():
     }
 
 
+# ========== iOS Shortcuts API ==========
+
+ALLOWED_EXTENSIONS = {'.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'}
+
+@app.route('/api/convert', methods=['POST'])
+def api_convert():
+    """
+    iOS Shortcuts 文档转换接口
+    
+    接收 multipart/form-data 格式的文件上传，返回 PDF 二进制流。
+    
+    请求:
+        - Method: POST
+        - Content-Type: multipart/form-data
+        - Field: 'file' (required)
+    
+    响应:
+        - 成功: PDF 文件 (Content-Type: application/pdf)
+        - 失败: JSON 错误信息
+    """
+    from flask import send_file
+    import io
+    
+    logger.info("=== iOS Shortcuts API 请求 ===")
+    logger.info(f"Remote IP: {request.remote_addr}")
+    
+    # 检查文件字段
+    if 'file' not in request.files:
+        logger.error("请求中没有 'file' 字段")
+        return {'error': '请上传文件', 'field': 'file'}, 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        logger.error("文件名为空")
+        return {'error': '文件名为空'}, 400
+    
+    # 检查文件扩展名
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        logger.error(f"不支持的文件类型: {file_ext}")
+        return {
+            'error': f'不支持的文件类型: {file_ext}',
+            'allowed': list(ALLOWED_EXTENSIONS)
+        }, 400
+    
+    input_file = None
+    output_pdf = None
+    
+    try:
+        # 保存上传的文件
+        timestamp_ms = int(time.time() * 1000)
+        input_file = os.path.join(config.TEMP_DIR, f"api_input_{timestamp_ms}{file_ext}")
+        file.save(input_file)
+        logger.info(f"文件已保存: {input_file}")
+        
+        # 转换为 PDF
+        logger.info("开始转换...")
+        output_pdf = converter.convert_to_pdf(input_file)
+        logger.info(f"转换完成: {output_pdf}")
+        
+        # 读取 PDF 到内存
+        with open(output_pdf, 'rb') as f:
+            pdf_data = f.read()
+        
+        # 生成输出文件名
+        output_filename = Path(file.filename).stem + '.pdf'
+        
+        logger.info(f"返回 PDF: {output_filename}, 大小: {len(pdf_data)} 字节")
+        
+        # 返回 PDF 流
+        return send_file(
+            io.BytesIO(pdf_data),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=output_filename
+        )
+        
+    except Exception as e:
+        logger.error(f"转换失败: {str(e)}", exc_info=True)
+        return {'error': f'转换失败: {str(e)}'}, 500
+        
+    finally:
+        # 清理临时文件
+        if input_file:
+            converter.cleanup_file(input_file)
+        if output_pdf:
+            converter.cleanup_file(output_pdf)
+
+
 if __name__ == '__main__':
     # 确保临时目录存在
     os.makedirs(config.TEMP_DIR, exist_ok=True)
